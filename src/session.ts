@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import readline from 'node:readline';
 import { LlmError, type GenerateOptions, type TokenUsage } from '@deepseek-ai/dsh-llm';
@@ -83,6 +83,38 @@ const ENV_WHITELIST = [
   'no_proxy',
 ] as const;
 
+let cachedFallbackProxy: string | null | undefined;
+
+export function detectFallbackProxy(): string | undefined {
+  if (cachedFallbackProxy !== undefined) {
+    return cachedFallbackProxy ?? undefined;
+  }
+  try {
+    const out = execFileSync('git', ['config', '--get', 'http.proxy'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
+    }).trim();
+    if (out) {
+      cachedFallbackProxy = out;
+      return out;
+    }
+  } catch {}
+  try {
+    const outGlobal = execFileSync('git', ['config', '--global', '--get', 'http.proxy'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
+    }).trim();
+    if (outGlobal) {
+      cachedFallbackProxy = outGlobal;
+      return outGlobal;
+    }
+  } catch {}
+  cachedFallbackProxy = null;
+  return undefined;
+}
+
 export function buildAgyEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const key of ENV_WHITELIST) {
@@ -93,6 +125,18 @@ export function buildAgyEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.Proce
     if (value === undefined) continue;
     if (key.startsWith('AGY_') || key.startsWith('AV_')) env[key] = value;
   }
+
+  // 自动回退探测：若环境缺少代理变量，尝试从 git 配置自动继承代理
+  if (!env.HTTP_PROXY && !env.http_proxy) {
+    const fallback = detectFallbackProxy();
+    if (fallback) {
+      env.HTTP_PROXY = fallback;
+      env.HTTPS_PROXY = fallback;
+      env.http_proxy = fallback;
+      env.https_proxy = fallback;
+    }
+  }
+
   return env;
 }
 

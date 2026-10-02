@@ -192,9 +192,12 @@ export async function verifyCredentials(agyPath: string, scratchDir: string): Pr
       if (data.result?.status === 'SUCCESS') {
         finish({ authenticated: true });
       } else {
+        const errorDetail = typeof data.result?.error === 'string'
+          ? data.result.error
+          : (data.result?.error?.message || `Returned ${data.result?.status ?? 'unknown'} status`);
         finish({
           authenticated: false,
-          error: data.result?.error?.message || `Returned ${data.result?.status ?? 'unknown'} status`,
+          error: errorDetail,
         });
       }
     });
