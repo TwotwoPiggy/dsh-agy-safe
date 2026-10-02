@@ -86,20 +86,10 @@ const ENV_WHITELIST = [
 let cachedFallbackProxy: string | null | undefined;
 
 export function detectFallbackProxy(): string | undefined {
-  if (cachedFallbackProxy !== undefined) {
-    return cachedFallbackProxy ?? undefined;
+  if (cachedFallbackProxy) {
+    return cachedFallbackProxy;
   }
-  try {
-    const out = execFileSync('git', ['config', '--get', 'http.proxy'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      windowsHide: true,
-    }).trim();
-    if (out) {
-      cachedFallbackProxy = out;
-      return out;
-    }
-  } catch {}
+  // 1. 优先读取 git global 配置的代理
   try {
     const outGlobal = execFileSync('git', ['config', '--global', '--get', 'http.proxy'], {
       encoding: 'utf8',
@@ -111,7 +101,18 @@ export function detectFallbackProxy(): string | undefined {
       return outGlobal;
     }
   } catch {}
-  cachedFallbackProxy = null;
+  // 2. 尝试读取当前目录 git 局部代理
+  try {
+    const out = execFileSync('git', ['config', '--get', 'http.proxy'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
+    }).trim();
+    if (out) {
+      cachedFallbackProxy = out;
+      return out;
+    }
+  } catch {}
   return undefined;
 }
 
