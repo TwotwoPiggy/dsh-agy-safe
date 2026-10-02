@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { LlmError, type LlmModelInfo, type LlmResolvedModelInfo, type ReasoningEffortId } from '@deepseek-ai/dsh-llm';
+import { buildAgyEnv } from './session.js';
 
 /** agy models 输出的单行条目：`<id>\t<显示名>`。 */
 export interface AgyListedModel {
@@ -47,7 +48,11 @@ const MODELS_TIMEOUT_MS = 30_000;
 export function fetchAgyModelsOutput(agyPath: string): Promise<string> {
   return new Promise((resolve, reject) => {
     // stdin 必须关闭（ignore→NUL）：agy 在 stdin 是打开管道时会挂起等待 EOF
-    const child = spawn(agyPath, ['models'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(agyPath, ['models'], {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: buildAgyEnv(),
+    });
     let stdout = '';
     let stderr = '';
     let settled = false;
