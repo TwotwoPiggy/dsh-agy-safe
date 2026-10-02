@@ -45,6 +45,11 @@ dsh（deepseek harness，npm 包 `@deepseek-ai/dsh`，全局安装）的模型�
   - **`--print-timeout` 对 stream-json 会话生效**：不传时默认 5m，单轮超过 5 分钟 agy 会以 `result.status=ERROR, error="timeout waiting for response"`（`duration_seconds≈300`）中止该轮。实测一轮原生工具调用（见下条）常在 5 分钟上下，正好撞上这个默认值。
   - **模型会绕过哨兵协议、直接调用 agy 内置工具**：此时事件流是 `step_update.step_type=tool`（grep/view_file 等，agy 自己执行、自己回喂结果），没有任何 `agent_response` 文本，插件侧表现为「长时间零 chunk 但进程仍在输出」。轮次时长随之从几十秒膨胀到数分钟（实测 5 分钟内 104 个 tool step、44 万 input token）。该行为是概率性的（同一份请求多次重放，有时守规矩、有时走原生工具），提示词只能降低概率，不能根除。
   - **缺陷形态**：进程空闲计时器此前只在轮次边界重置，等于把 `idleTimeoutMs`（默认 300s）变成了「单轮硬上限」。子代理轮次超过 300s 时进程在轮次中途被 dispose，宿主看到的是 `TRANSPORT: Antigravity CLI process exited unexpectedly`，本轮零产出；dsh 重试后新进程要重放全量历史（3 万多 token 输入），再次超时被杀，最多 3 次重试全部烧掉。生产会话日志（2026-09-08 20:21）里两个并发 agy 子代理一个正常、一个在 +300.0s 被杀且零产出，正是此形态。
+- **2026-10-02 DSH 0.2.0-rc.2 契约演进实测与适配**（内核 `@deepseek-ai/dsh-llm: 0.2.0-rc.2`）：
+  - **ToolResultMessage 破坏性变更**：废除 `ToolResultBlock`（从 `ContentBlockMap` 移除），升级为一级消息 `ToolResultMessage`（`role: 'tool'`，`toolCallId` 与 `isError` 直接提升至消息根属性，`content` 变为常规 ContentBlock 列表）。插件需在 `extractMessageText` 中优先处理 `message.role === 'tool'` 并格式化为 `[Tool Result for <id>]`，同时对 0.1.x 的 `case 'tool-result'` 保持向下兼容。
+  - **系统提示词传递机制演进**：在 DSH 0.2.0 的 `dsh-agent-loop` 中，`options.system` 不再显式传值（留空为 `undefined`），而是将 System Prompt 作为派生历史首条消息（`role: 'system'`）置于 `options.messages[0]`。插件需智能提取首条系统消息作为 System Prompt，其余消息进入会话历史，避免 System Prompt 被降级为普通 `user` 轮次。
+  - **新增角色与内容块**：引入 `role: 'developer'`（动态工具变更 `tool-addition`/`tool-removal` 与指令）和 `FileBlock`（`type: 'file'`）。插件对其做防御性文本提取或无害跳过。
+  - **网络环境与代理白名单**：子进程环境白名单扩充 `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`（及其小写变体），确保在必须走代理的网络环境中 `agy` 正常连接。
 
 ## 4. 总体设计
 

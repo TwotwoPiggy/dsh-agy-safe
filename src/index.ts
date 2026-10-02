@@ -124,7 +124,7 @@ export function apply(ctx: Context, rawConfig?: AgyPluginConfig): void {
 
 export { AgyAdapter } from './adapter.js';
 export { AgySessionManager, AgySession } from './session.js';
-export { TranscriptFlattener } from './flatten.js';
+export { TranscriptFlattener, resolveSystemAndTurns } from './flatten.js';
 export { ToolCallProtocol } from './tool-protocol.js';
 export { ChunkEmitter } from './chunks.js';
 export { UsageBaseline } from './usage.js';

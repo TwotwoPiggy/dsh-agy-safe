@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import readline from 'node:readline';
 import { LlmError, type GenerateOptions, type TokenUsage } from '@deepseek-ai/dsh-llm';
-import { TranscriptFlattener, type FlattenedTurn } from './flatten.js';
+import { TranscriptFlattener, resolveSystemAndTurns, type FlattenedTurn } from './flatten.js';
 import { UsageBaseline, type UsageTracker } from './usage.js';
 import type { AgyUsage } from './chunks.js';
 
@@ -56,7 +56,7 @@ export function sessionKeyFor(sessionId: string, purpose?: string): string {
 }
 
 /**
- * agy 子进程的最小环境白名单：只放行 Windows 基础变量和 agy 自家前缀
+ * agy 子进程的最小环境白名单：只放行 Windows 基础变量、网络代理变量和 agy 自家前缀
  * （`AGY_` 与 `AV_` 前缀），避免模型后端进程把 dsh 宿主环境的密钥等通读走。
  */
 const ENV_WHITELIST = [
@@ -72,6 +72,15 @@ const ENV_WHITELIST = [
   'LOCALAPPDATA',
   'PATHEXT',
   'COMSPEC',
+  // 网络代理变量（保证在受限或代理网络环境下 agy 能访问远程端点）
+  'HTTP_PROXY',
+  'http_proxy',
+  'HTTPS_PROXY',
+  'https_proxy',
+  'ALL_PROXY',
+  'all_proxy',
+  'NO_PROXY',
+  'no_proxy',
 ] as const;
 
 export function buildAgyEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
@@ -365,7 +374,7 @@ export class AgySessionManager {
     const model = options.model;
     const normalizedEffort = effort.toLowerCase();
 
-    const flattenedTurns = TranscriptFlattener.flattenTurns(options.messages);
+    const { effectiveSystem, turns: flattenedTurns } = resolveSystemAndTurns(options.system, options.messages);
     const incomingFps = flattenedTurns.map((t) => t.fingerprint);
 
     let session = this.sessions.get(sessionKey);
@@ -397,7 +406,7 @@ export class AgySessionManager {
     this.sessions.set(sessionKey, session);
     session.setHistoryFingerprints(incomingFps);
 
-    const fullPrompt = TranscriptFlattener.buildFullPrompt(options.system, options.tools, flattenedTurns);
+    const fullPrompt = TranscriptFlattener.buildFullPrompt(effectiveSystem, options.tools, flattenedTurns);
     return { session, prompt: fullPrompt };
   }
 

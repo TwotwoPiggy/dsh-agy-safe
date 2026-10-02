@@ -9,20 +9,29 @@ export interface FlattenedTurn {
 }
 
 export function extractBlockText(block: ContentBlock): string {
-  switch (block.type) {
+  const b = block as any;
+  switch (b.type) {
     case 'text':
-      return block.text;
+      return b.text ?? '';
     case 'reasoning':
       return ''; // Reasoning is internal, omit from flattened prompt
     case 'tool-call':
-      return `${TOOL_CALL_START}\n${JSON.stringify({ name: block.name, arguments: tryParseJson(block.arguments) }, null, 2)}\n${TOOL_CALL_END}`;
+      return `${TOOL_CALL_START}\n${JSON.stringify({ name: b.name, arguments: tryParseJson(b.arguments) }, null, 2)}\n${TOOL_CALL_END}`;
     case 'tool-result': {
-      const innerText = block.content.map(extractBlockText).filter(Boolean).join('\n');
-      const errFlag = block.isError ? ' (Error)' : '';
-      return `[Tool Result for ${block.toolCallId}${errFlag}]:\n${innerText}`;
+      // DSH 0.1.x backward compatibility: block-level tool result
+      const innerText = Array.isArray(b.content)
+        ? b.content.map(extractBlockText).filter(Boolean).join('\n')
+        : (typeof b.content === 'string' ? b.content : '');
+      const errFlag = b.isError ? ' (Error)' : '';
+      return `[Tool Result for ${b.toolCallId ?? 'unknown'}${errFlag}]:\n${innerText}`;
     }
     case 'image':
-      return `[Image attached: ${block.attachment?.id ?? 'image'}]`;
+      return `[Image attached: ${b.attachment?.id ?? 'image'}]`;
+    case 'file':
+      return `[File attached: ${b.attachment?.id ?? b.attachment?.name ?? 'file'}]`;
+    case 'tool-addition':
+    case 'tool-removal':
+      return ''; // Developer tool updates in DSH 0.2.0
     default:
       return '';
   }
@@ -37,16 +46,58 @@ function tryParseJson(str: string): unknown {
 }
 
 export function extractMessageText(message: Message): string {
-  if (Array.isArray(message.content)) {
-    return message.content.map(extractBlockText).filter(Boolean).join('\n');
+  const msg = message as any;
+
+  // DSH 0.2.0 first-class ToolResultMessage (role === 'tool')
+  if (msg.role === 'tool') {
+    const innerText = Array.isArray(msg.content)
+      ? msg.content.map(extractBlockText).filter(Boolean).join('\n')
+      : (typeof msg.content === 'string' ? msg.content : '');
+    const errFlag = msg.isError ? ' (Error)' : '';
+    const toolCallId = msg.toolCallId ?? 'unknown';
+    return `[Tool Result for ${toolCallId}${errFlag}]:\n${innerText}`;
   }
-  if (typeof message.content === 'string') {
-    return message.content;
+
+  if (Array.isArray(msg.content)) {
+    return msg.content.map(extractBlockText).filter(Boolean).join('\n');
+  }
+  if (typeof msg.content === 'string') {
+    return msg.content;
   }
   return '';
 }
 
+export function resolveSystemAndTurns(
+  systemPrompt: string | undefined,
+  messages: readonly Message[] = [],
+  baseFingerprint = '',
+): { effectiveSystem: string | undefined; turns: FlattenedTurn[] } {
+  let effectiveSystem = systemPrompt && systemPrompt.trim().length > 0 ? systemPrompt.trim() : undefined;
+  let historyMessages = messages;
+
+  // DSH 0.2.0 compatibility: loop-built requests omit options.system and supply
+  // the system prompt as the leading system-role message in options.messages.
+  if (!effectiveSystem && messages.length > 0 && (messages[0] as any).role === 'system') {
+    const firstText = extractMessageText(messages[0]).trim();
+    if (firstText.length > 0) {
+      effectiveSystem = firstText;
+    }
+    historyMessages = messages.slice(1);
+  }
+
+  const turns = TranscriptFlattener.flattenTurns(historyMessages, baseFingerprint);
+  return { effectiveSystem, turns };
+}
+
 export class TranscriptFlattener {
+  static resolveSystemAndTurns(
+    systemPrompt: string | undefined,
+    messages: readonly Message[] = [],
+    baseFingerprint = '',
+  ): { effectiveSystem: string | undefined; turns: FlattenedTurn[] } {
+    return resolveSystemAndTurns(systemPrompt, messages, baseFingerprint);
+  }
+
   static computeFingerprint(prevFingerprint: string, role: string, content: string): string {
     const hash = createHash('sha256');
     hash.update(prevFingerprint);

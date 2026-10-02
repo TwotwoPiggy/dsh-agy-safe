@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TranscriptFlattener, extractBlockText, extractMessageText } from '../lib/flatten.js';
+import { TranscriptFlattener, extractBlockText, extractMessageText, resolveSystemAndTurns } from '../lib/flatten.js';
 
 test('TranscriptFlattener - extractBlockText', () => {
   assert.equal(extractBlockText({ type: 'text', text: 'hello world' }), 'hello world');
@@ -96,4 +96,79 @@ test('TranscriptFlattener - buildIncrementalPrompt', () => {
   ];
   const prompt = TranscriptFlattener.buildIncrementalPrompt(newTurns);
   assert.equal(prompt, 'next turn message');
+});
+
+test('TranscriptFlattener - DSH 0.2.0 ToolResultMessage and FileBlock', () => {
+  // DSH 0.2.0 first-class ToolResultMessage
+  const toolMsgSuccess = {
+    role: 'tool',
+    toolCallId: 'call_abc_123',
+    content: [{ type: 'text', text: 'status: 200 ok' }],
+  };
+  const textSuccess = extractMessageText(toolMsgSuccess);
+  assert.match(textSuccess, /\[Tool Result for call_abc_123\]/);
+  assert.match(textSuccess, /status: 200 ok/);
+
+  const toolMsgError = {
+    role: 'tool',
+    toolCallId: 'call_xyz_456',
+    isError: true,
+    content: [{ type: 'text', text: 'file not found' }],
+  };
+  const textError = extractMessageText(toolMsgError);
+  assert.match(textError, /\[Tool Result for call_xyz_456 \(Error\)\]/);
+  assert.match(textError, /file not found/);
+
+  // FileBlock
+  const fileBlock = {
+    type: 'file',
+    attachment: { id: 'file_789', name: 'document.pdf' },
+  };
+  assert.equal(extractBlockText(fileBlock), '[File attached: file_789]');
+
+  // ToolAddition / ToolRemoval blocks produce no text
+  assert.equal(extractBlockText({ type: 'tool-addition', toolName: 'testTool' }), '');
+  assert.equal(extractBlockText({ type: 'tool-removal', toolName: 'testTool' }), '');
+});
+
+test('TranscriptFlattener - resolveSystemAndTurns for DSH 0.1.x and 0.2.x', () => {
+  // DSH 0.1.x: options.system is passed explicitly, messages starts with user
+  const legacySystem = 'You are a coding assistant.';
+  const legacyMessages = [
+    { role: 'user', content: [{ type: 'text', text: 'hello' }] },
+  ];
+  const res1 = resolveSystemAndTurns(legacySystem, legacyMessages);
+  assert.equal(res1.effectiveSystem, 'You are a coding assistant.');
+  assert.equal(res1.turns.length, 1);
+  assert.equal(res1.turns[0].role, 'user');
+  assert.equal(res1.turns[0].text, 'hello');
+
+  // DSH 0.2.0: loop-built request omits options.system, places system in messages[0]
+  const dsh2Messages = [
+    { role: 'system', content: [{ type: 'text', text: 'You are DeepSeek Harness.' }] },
+    { role: 'user', content: [{ type: 'text', text: 'solve this issue' }] },
+    { role: 'assistant', content: [{ type: 'text', text: 'analyzing...' }] },
+    {
+      role: 'tool',
+      toolCallId: 'call_1',
+      content: [{ type: 'text', text: 'test output' }],
+    },
+  ];
+  const res2 = resolveSystemAndTurns(undefined, dsh2Messages);
+  assert.equal(res2.effectiveSystem, 'You are DeepSeek Harness.');
+  // The system message should not be mapped into turns
+  assert.equal(res2.turns.length, 3);
+  assert.equal(res2.turns[0].role, 'user');
+  assert.equal(res2.turns[0].text, 'solve this issue');
+  assert.equal(res2.turns[1].role, 'assistant');
+  assert.equal(res2.turns[1].text, 'analyzing...');
+  assert.equal(res2.turns[2].role, 'user'); // tool result maps to user turn in conversation transcript
+  assert.match(res2.turns[2].text, /\[Tool Result for call_1\]/);
+
+  // When both are absent
+  const res3 = resolveSystemAndTurns('', [
+    { role: 'user', content: [{ type: 'text', text: 'hi' }] },
+  ]);
+  assert.equal(res3.effectiveSystem, undefined);
+  assert.equal(res3.turns.length, 1);
 });

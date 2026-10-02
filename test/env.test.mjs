@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildAgyArgs, buildAgyEnv, sessionKeyFor } from '../lib/session.js';
 
-test('buildAgyEnv - keeps whitelisted base vars and AGY_*/AV_* prefixes only', () => {
+test('buildAgyEnv - keeps whitelisted base vars, proxy vars and AGY_*/AV_* prefixes only', () => {
   const env = buildAgyEnv({
     PATH: 'C:\\bin',
     SystemRoot: 'C:\\Windows',
@@ -13,6 +13,9 @@ test('buildAgyEnv - keeps whitelisted base vars and AGY_*/AV_* prefixes only', (
     AGY_HOME: 'C:\\Users\\me\\.agy',
     AV_CRED: 'av-cred',
     OTHER_SECRET: 'hunter2',
+    HTTP_PROXY: 'http://127.0.0.1:10808',
+    https_proxy: 'http://127.0.0.1:10808',
+    NO_PROXY: 'localhost,127.0.0.1',
   });
   assert.equal(env.PATH, 'C:\\bin');
   assert.equal(env.SystemRoot, 'C:\\Windows');
@@ -20,6 +23,9 @@ test('buildAgyEnv - keeps whitelisted base vars and AGY_*/AV_* prefixes only', (
   assert.equal(env.TEMP, 'C:\\Temp');
   assert.equal(env.AGY_HOME, 'C:\\Users\\me\\.agy');
   assert.equal(env.AV_CRED, 'av-cred');
+  assert.equal(env.HTTP_PROXY, 'http://127.0.0.1:10808');
+  assert.equal(env.https_proxy, 'http://127.0.0.1:10808');
+  assert.equal(env.NO_PROXY, 'localhost,127.0.0.1');
   assert.equal(env.DEEPSEEK_API_KEY, undefined);
   assert.equal(env.OTHER_SECRET, undefined);
 });
