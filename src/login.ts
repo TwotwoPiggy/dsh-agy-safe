@@ -13,9 +13,14 @@ export interface AgyStatusInfo {
   scratchDir: string;
   hasCachedAuth: boolean;
   authenticated?: boolean;
+  proxy?: string;
 }
 
-export async function detectAgyStatus(agyPath: string, scratchDir: string): Promise<AgyStatusInfo> {
+export async function detectAgyStatus(
+  agyPath: string,
+  scratchDir: string,
+  proxy?: string,
+): Promise<AgyStatusInfo> {
   const geminiDir = join(homedir(), '.gemini');
   const hasCachedAuth = existsSync(geminiDir);
 
@@ -28,7 +33,7 @@ export async function detectAgyStatus(agyPath: string, scratchDir: string): Prom
   }
 
   return new Promise((resolve) => {
-    execFile(agyPath, ['--version'], { timeout: 4000, env: buildAgyEnv() }, (error, stdout) => {
+    execFile(agyPath, ['--version'], { timeout: 4000, env: buildAgyEnv(proxy) }, (error, stdout) => {
       if (error) {
         resolve({
           installed: false,
@@ -36,6 +41,7 @@ export async function detectAgyStatus(agyPath: string, scratchDir: string): Prom
           agyPath,
           scratchDir,
           hasCachedAuth,
+          proxy,
         });
       } else {
         const version = stdout.trim();
@@ -45,20 +51,23 @@ export async function detectAgyStatus(agyPath: string, scratchDir: string): Prom
           agyPath,
           scratchDir,
           hasCachedAuth,
+          proxy,
         });
       }
     });
   });
 }
 
-export function openLoginTerminal(agyPath: string): { started: boolean; error?: string } {
+export function openLoginTerminal(agyPath: string, proxy?: string): { started: boolean; error?: string } {
   try {
     const os = platform();
+    const env = { ...process.env, ...buildAgyEnv(proxy) };
     if (os === 'win32') {
       const child = spawn('cmd.exe', ['/c', 'start', '""', 'cmd.exe', '/k', agyPath], {
         detached: true,
         windowsHide: false,
         stdio: 'ignore',
+        env,
       });
       child.unref();
       return { started: true };
@@ -66,6 +75,7 @@ export function openLoginTerminal(agyPath: string): { started: boolean; error?: 
       const child = spawn('open', ['-a', 'Terminal', agyPath], {
         detached: true,
         stdio: 'ignore',
+        env,
       });
       child.unref();
       return { started: true };
@@ -74,6 +84,7 @@ export function openLoginTerminal(agyPath: string): { started: boolean; error?: 
       const child = spawn('x-terminal-emulator', ['-e', agyPath], {
         detached: true,
         stdio: 'ignore',
+        env,
       });
       child.unref();
       return { started: true };
@@ -106,7 +117,11 @@ const VERIFY_TIMEOUT_MS = 90_000;
  * 结束会话），逐行解析 stdout，以 `result` 事件本身判定成败，判定后立即结束
  * 进程，不再等待退出；进程未出 result 就退出或触发看门狗时如实报错。
  */
-export async function verifyCredentials(agyPath: string, scratchDir: string): Promise<{ authenticated: boolean; error?: string }> {
+export async function verifyCredentials(
+  agyPath: string,
+  scratchDir: string,
+  proxy?: string,
+): Promise<{ authenticated: boolean; error?: string }> {
   return new Promise((resolve) => {
     if (!existsSync(scratchDir)) {
       mkdirSync(scratchDir, { recursive: true });
@@ -129,7 +144,7 @@ export async function verifyCredentials(agyPath: string, scratchDir: string): Pr
           cwd: scratchDir,
           stdio: ['ignore', 'pipe', 'pipe'],
           windowsHide: true,
-          env: buildAgyEnv(),
+          env: buildAgyEnv(proxy),
         },
       );
     } catch (err) {

@@ -1,4 +1,4 @@
-import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import readline from 'node:readline';
 import { LlmError, type GenerateOptions, type TokenUsage } from '@deepseek-ai/dsh-llm';
@@ -8,6 +8,7 @@ import type { AgyUsage } from './chunks.js';
 
 export interface SessionConfig {
   agyPath: string;
+  proxy: string;
   scratchDir: string;
   idleTimeoutMs: number;
   streamIdleTimeoutMs: number;
@@ -83,40 +84,7 @@ const ENV_WHITELIST = [
   'no_proxy',
 ] as const;
 
-let cachedFallbackProxy: string | null | undefined;
-
-export function detectFallbackProxy(): string | undefined {
-  if (cachedFallbackProxy) {
-    return cachedFallbackProxy;
-  }
-  // 1. 优先读取 git global 配置的代理
-  try {
-    const outGlobal = execFileSync('git', ['config', '--global', '--get', 'http.proxy'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      windowsHide: true,
-    }).trim();
-    if (outGlobal) {
-      cachedFallbackProxy = outGlobal;
-      return outGlobal;
-    }
-  } catch {}
-  // 2. 尝试读取当前目录 git 局部代理
-  try {
-    const out = execFileSync('git', ['config', '--get', 'http.proxy'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      windowsHide: true,
-    }).trim();
-    if (out) {
-      cachedFallbackProxy = out;
-      return out;
-    }
-  } catch {}
-  return undefined;
-}
-
-export function buildAgyEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+export function buildAgyEnv(proxy?: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const key of ENV_WHITELIST) {
     const value = base[key];
@@ -127,15 +95,15 @@ export function buildAgyEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.Proce
     if (key.startsWith('AGY_') || key.startsWith('AV_')) env[key] = value;
   }
 
-  // 自动回退探测：若环境缺少代理变量，尝试从 git 配置自动继承代理
-  if (!env.HTTP_PROXY && !env.http_proxy) {
-    const fallback = detectFallbackProxy();
-    if (fallback) {
-      env.HTTP_PROXY = fallback;
-      env.HTTPS_PROXY = fallback;
-      env.http_proxy = fallback;
-      env.https_proxy = fallback;
-    }
+  // 若配置了代理，显式注入给 agy 进程环境变量（配置优先，独立隔离）
+  const targetProxy = proxy?.trim();
+  if (targetProxy) {
+    env.HTTP_PROXY = targetProxy;
+    env.HTTPS_PROXY = targetProxy;
+    env.http_proxy = targetProxy;
+    env.https_proxy = targetProxy;
+    env.ALL_PROXY = targetProxy;
+    env.all_proxy = targetProxy;
   }
 
   return env;
@@ -222,7 +190,7 @@ export class AgySession implements UsageTracker {
         cwd: this.config.scratchDir,
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
-        env: buildAgyEnv(),
+        env: buildAgyEnv(this.config.proxy),
       });
 
       this.child.on('error', (err) => {

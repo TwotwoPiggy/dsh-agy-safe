@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildAgyArgs, buildAgyEnv, sessionKeyFor } from '../lib/session.js';
 
-test('buildAgyEnv - keeps whitelisted base vars, proxy vars and AGY_*/AV_* prefixes only', () => {
-  const env = buildAgyEnv({
+test('buildAgyEnv - keeps whitelisted base vars and AGY_*/AV_* prefixes only', () => {
+  const env = buildAgyEnv(undefined, {
     PATH: 'C:\\bin',
     SystemRoot: 'C:\\Windows',
     USERPROFILE: 'C:\\Users\\me',
@@ -13,8 +13,8 @@ test('buildAgyEnv - keeps whitelisted base vars, proxy vars and AGY_*/AV_* prefi
     AGY_HOME: 'C:\\Users\\me\\.agy',
     AV_CRED: 'av-cred',
     OTHER_SECRET: 'hunter2',
-    HTTP_PROXY: 'http://127.0.0.1:10808',
-    https_proxy: 'http://127.0.0.1:10808',
+    HTTP_PROXY: 'http://old.proxy:8080',
+    https_proxy: 'http://old.proxy:8080',
     NO_PROXY: 'localhost,127.0.0.1',
   });
   assert.equal(env.PATH, 'C:\\bin');
@@ -23,11 +23,23 @@ test('buildAgyEnv - keeps whitelisted base vars, proxy vars and AGY_*/AV_* prefi
   assert.equal(env.TEMP, 'C:\\Temp');
   assert.equal(env.AGY_HOME, 'C:\\Users\\me\\.agy');
   assert.equal(env.AV_CRED, 'av-cred');
-  assert.equal(env.HTTP_PROXY, 'http://127.0.0.1:10808');
-  assert.equal(env.https_proxy, 'http://127.0.0.1:10808');
+  assert.equal(env.HTTP_PROXY, 'http://old.proxy:8080');
+  assert.equal(env.https_proxy, 'http://old.proxy:8080');
   assert.equal(env.NO_PROXY, 'localhost,127.0.0.1');
   assert.equal(env.DEEPSEEK_API_KEY, undefined);
   assert.equal(env.OTHER_SECRET, undefined);
+});
+
+test('buildAgyEnv - explicitly configures proxy and overrides process env', () => {
+  const env = buildAgyEnv('http://127.0.0.1:10808', {
+    PATH: 'C:\\bin',
+  });
+  assert.equal(env.HTTP_PROXY, 'http://127.0.0.1:10808');
+  assert.equal(env.HTTPS_PROXY, 'http://127.0.0.1:10808');
+  assert.equal(env.http_proxy, 'http://127.0.0.1:10808');
+  assert.equal(env.https_proxy, 'http://127.0.0.1:10808');
+  assert.equal(env.ALL_PROXY, 'http://127.0.0.1:10808');
+  assert.equal(env.all_proxy, 'http://127.0.0.1:10808');
 });
 
 test('sessionKeyFor - separates main conversation from auxiliary purposes', () => {

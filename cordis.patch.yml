@@ -4,3 +4,5 @@
 - insert:
     - id: llm-agy
       name: 'dsh-agy-safe'
+      config:
+        proxy: 'http://127.0.0.1:10808'

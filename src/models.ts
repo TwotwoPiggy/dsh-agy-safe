@@ -45,13 +45,13 @@ const MODELS_TIMEOUT_MS = 30_000;
  * 执行 `agy models` 并返回 stdout 原文。
  * 进度 spinner 走 stderr，stdout 只含 `id\t名称` 数据行。
  */
-export function fetchAgyModelsOutput(agyPath: string): Promise<string> {
+export function fetchAgyModelsOutput(agyPath: string, proxy?: string): Promise<string> {
   return new Promise((resolve, reject) => {
     // stdin 必须关闭（ignore→NUL）：agy 在 stdin 是打开管道时会挂起等待 EOF
     const child = spawn(agyPath, ['models'], {
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: buildAgyEnv(),
+      env: buildAgyEnv(proxy),
     });
     let stdout = '';
     let stderr = '';
@@ -175,13 +175,14 @@ export class ModelCatalog {
 
   constructor(
     private readonly agyPath: string,
+    private readonly proxy: string = '',
     private readonly cacheTtlMs = 300_000,
   ) {}
 
   private async ensureFresh(): Promise<void> {
     if (this.bases.length > 0 && Date.now() - this.fetchedAt < this.cacheTtlMs) return;
     if (!this.inflight) {
-      this.inflight = fetchAgyModelsOutput(this.agyPath)
+      this.inflight = fetchAgyModelsOutput(this.agyPath, this.proxy)
         .then((output) => {
           this.bases = groupBaseModels(parseAgyModelsOutput(output));
           this.fetchedAt = Date.now();

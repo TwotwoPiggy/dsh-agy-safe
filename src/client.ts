@@ -151,6 +151,13 @@ export function apply(ctx: ClientContext): void {
             e('span', { style: { color: 'var(--dsw-alias-label-secondary, #666)' } }, '本地凭据缓存'),
             e('span', {}, status.hasCachedAuth ? '已检测到凭据目录 (~/.gemini)' : '未检测到凭据'),
           ),
+          status.proxy &&
+            e(
+              'div',
+              { style: { display: 'flex', justifyContent: 'space-between' } },
+              e('span', { style: { color: 'var(--dsw-alias-label-secondary, #666)' } }, '进程级网络代理'),
+              e('code', { style: { fontSize: '12px' } }, status.proxy),
+            ),
         ),
       e(
         'div',

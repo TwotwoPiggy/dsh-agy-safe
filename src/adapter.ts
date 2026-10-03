@@ -21,9 +21,10 @@ export class AgyAdapter extends LlmAdapter {
 
   constructor(private readonly config: Required<AgyPluginConfig>) {
     super();
-    this.catalog = new ModelCatalog(config.agyPath);
+    this.catalog = new ModelCatalog(config.agyPath, config.proxy);
     this.sessionManager = new AgySessionManager({
       agyPath: config.agyPath,
+      proxy: config.proxy,
       scratchDir: config.scratchDir,
       idleTimeoutMs: config.idleTimeoutMs,
       streamIdleTimeoutMs: config.streamIdleTimeoutMs,

@@ -13,6 +13,7 @@ export function getDefaultScratchDir(): string {
 
 export const Config = z.object({
   agyPath: z.string().default('agy').description('Path or executable command for Antigravity CLI (agy)'),
+  proxy: z.string().default('http://127.0.0.1:10808').description('HTTP/HTTPS proxy URL specifically for agy child processes (e.g. http://127.0.0.1:10808, leave empty for no proxy)'),
   defaultEffort: z.union(['low', 'medium', 'high'] as const).default('medium').description('Default reasoning effort (low, medium, high)'),
   scratchDir: z.string().default(getDefaultScratchDir()).description('Scratch directory used as cwd for background model agy processes'),
   idleTimeoutMs: z.number().min(1000).default(300_000).description('Idle timeout in milliseconds without any process output before releasing cached agy processes'),
@@ -23,6 +24,7 @@ export const Config = z.object({
 
 export type AgyPluginConfig = {
   agyPath?: string;
+  proxy?: string;
   defaultEffort?: 'low' | 'medium' | 'high';
   scratchDir?: string;
   idleTimeoutMs?: number;
@@ -33,6 +35,7 @@ export type AgyPluginConfig = {
 
 export const DEFAULT_CONFIG: Required<AgyPluginConfig> = {
   agyPath: 'agy',
+  proxy: 'http://127.0.0.1:10808',
   defaultEffort: 'medium',
   scratchDir: getDefaultScratchDir(),
   idleTimeoutMs: 300_000,

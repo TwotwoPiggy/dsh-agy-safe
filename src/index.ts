@@ -69,7 +69,7 @@ export function apply(ctx: Context, rawConfig?: AgyPluginConfig): void {
         const url = new URL(req.url ?? '/', 'http://dsh.local');
 
         if (req.method === 'GET' && url.pathname === `${routePrefix}/status`) {
-          const status = await detectAgyStatus(resolvedConfig.agyPath, resolvedConfig.scratchDir);
+          const status = await detectAgyStatus(resolvedConfig.agyPath, resolvedConfig.scratchDir, resolvedConfig.proxy);
           sendJson(res, 200, { ok: true, value: status });
           return;
         }
@@ -86,12 +86,12 @@ export function apply(ctx: Context, rawConfig?: AgyPluginConfig): void {
 
         switch (url.pathname) {
           case `${routePrefix}/login`: {
-            const result = openLoginTerminal(resolvedConfig.agyPath);
+            const result = openLoginTerminal(resolvedConfig.agyPath, resolvedConfig.proxy);
             sendJson(res, 200, { ok: true, value: result });
             return;
           }
           case `${routePrefix}/verify`: {
-            const result = await verifyCredentials(resolvedConfig.agyPath, resolvedConfig.scratchDir);
+            const result = await verifyCredentials(resolvedConfig.agyPath, resolvedConfig.scratchDir, resolvedConfig.proxy);
             sendJson(res, 200, { ok: true, value: result });
             return;
           }

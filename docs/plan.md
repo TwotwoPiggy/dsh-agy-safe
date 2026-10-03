@@ -49,7 +49,7 @@ dsh（deepseek harness，npm 包 `@deepseek-ai/dsh`，全局安装）的模型�
   - **ToolResultMessage 破坏性变更**：废除 `ToolResultBlock`（从 `ContentBlockMap` 移除），升级为一级消息 `ToolResultMessage`（`role: 'tool'`，`toolCallId` 与 `isError` 直接提升至消息根属性，`content` 变为常规 ContentBlock 列表）。插件需在 `extractMessageText` 中优先处理 `message.role === 'tool'` 并格式化为 `[Tool Result for <id>]`，同时对 0.1.x 的 `case 'tool-result'` 保持向下兼容。
   - **系统提示词传递机制演进**：在 DSH 0.2.0 的 `dsh-agent-loop` 中，`options.system` 不再显式传值（留空为 `undefined`），而是将 System Prompt 作为派生历史首条消息（`role: 'system'`）置于 `options.messages[0]`。插件需智能提取首条系统消息作为 System Prompt，其余消息进入会话历史，避免 System Prompt 被降级为普通 `user` 轮次。
   - **新增角色与内容块**：引入 `role: 'developer'`（动态工具变更 `tool-addition`/`tool-removal` 与指令）和 `FileBlock`（`type: 'file'`）。插件对其做防御性文本提取或无害跳过。
-  - **网络环境与代理白名单**：子进程环境白名单扩充 `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`（及其小写变体），确保在必须走代理的网络环境中 `agy` 正常连接。
+  - **网络环境与进程级代理配置**：不再依赖全局环境变量或 git 全局配置，而是在插件配置段中显式提供 `proxy` 选项（默认 `http://127.0.0.1:10808`）。插件在拉起任何 `agy` 进程（会话、模型发现、凭据验证、交互登录终端）时，独立将该代理注入到子进程环境变量中，保持系统宿主全局环境干净。
 
 ## 4. 总体设计
 
@@ -69,7 +69,7 @@ dsh（deepseek harness，npm 包 `@deepseek-ai/dsh`，全局安装）的模型�
 
 浏览器侧 `apply` 完成一件事：`ctx.slots.register({name:'settings.section', id:'agy', order:45, label:'Antigravity CLI'}, AgySection)`。
 
-设置段 `llm-agy` 的字段：`agyPath`（默认 `'agy'`）、`defaultEffort`（默认 `'medium'`）、`scratchDir`（默认 `~/.dsh/llm-agy/scratch`）、`idleTimeoutMs`（默认 300s，进程无输出多久后回收，**按活动重置**）、`streamIdleTimeoutMs`（默认 120s，轮次内事件静默上限）、`turnTimeoutMs`（默认 30min，作为 agy `--print-timeout` 的单轮上限）、`retryPolicy`（模型目录由 `agy models` 动态提供，不在设置段里）。
+设置段 `llm-agy` 的字段：`agyPath`（默认 `'agy'`）、`proxy`（默认 `'http://127.0.0.1:10808'`，进程级专供 agy 的网络代理，支持 HTTP/HTTPS 代理格式；置空或留空则不设置代理）、`defaultEffort`（默认 `'medium'`）、`scratchDir`（默认 `~/.dsh/llm-agy/scratch`）、`idleTimeoutMs`（默认 300s，进程无输出多久后回收，**按活动重置**）、`streamIdleTimeoutMs`（默认 120s，轮次内事件静默上限）、`turnTimeoutMs`（默认 30min，作为 agy `--print-timeout` 的单轮上限）、`retryPolicy`（模型目录由 `agy models` 动态提供，不在设置段里）。
 
 ### 4.2 组件
 
